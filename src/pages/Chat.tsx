@@ -56,8 +56,11 @@ export default function Chat() {
     addMessage(assistantMsg);
 
     await simulateMockStream(
-      profile.companionStyle,
-      profile.displayName,
+      {
+        personality: profile.companionPersonality,
+        vibe: profile.vibe,
+        userName: profile.displayName,
+      },
       (delta) => {
         accumulated += delta;
         updateLastAssistantMessage(accumulated);
