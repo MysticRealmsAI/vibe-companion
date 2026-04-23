@@ -1,5 +1,13 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
-import type { CompanionStyle, LanguagePreference, VibePreference } from "@/lib/companions";
+import type {
+  CompanionStyle,
+  LanguagePreference,
+  VibePreference,
+  GenderOption,
+  SexualPreference,
+  CompanionPersonality,
+  AppearancePreference,
+} from "@/lib/companions";
 
 export interface ChatMessage {
   id: string;
@@ -13,6 +21,10 @@ export interface UserProfile {
   language: LanguagePreference;
   companionStyle: CompanionStyle;
   vibe: VibePreference;
+  gender: GenderOption;
+  sexualPreference: SexualPreference;
+  companionPersonality: CompanionPersonality;
+  appearance: AppearancePreference;
   moodNotes: string;
   favoriteTopics: string[];
   lastChatSummary: string;
@@ -39,6 +51,10 @@ const defaultProfile: UserProfile = {
   language: "hinglish",
   companionStyle: "caring",
   vibe: "romantic",
+  gender: "male",
+  sexualPreference: "straight",
+  companionPersonality: "cute_soft",
+  appearance: { hair: "long", skinTone: "medium", style: "modern" },
   moodNotes: "",
   favoriteTopics: [],
   lastChatSummary: "",
