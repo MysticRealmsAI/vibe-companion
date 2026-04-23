@@ -1,12 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import type {
-  CompanionStyle,
+  CompanionProfile,
   LanguagePreference,
   VibePreference,
-  GenderOption,
-  SexualPreference,
-  CompanionPersonality,
-  AppearancePreference,
 } from "@/lib/companions";
 
 export interface ChatMessage {
@@ -19,12 +15,8 @@ export interface ChatMessage {
 export interface UserProfile {
   displayName: string;
   language: LanguagePreference;
-  companionStyle: CompanionStyle;
   vibe: VibePreference;
-  gender: GenderOption;
-  sexualPreference: SexualPreference;
-  companionPersonality: CompanionPersonality;
-  appearance: AppearancePreference;
+  companion: CompanionProfile;
   moodNotes: string;
   favoriteTopics: string[];
   lastChatSummary: string;
@@ -45,24 +37,6 @@ interface UserContextType {
   clearMemory: () => void;
   deleteAccount: () => void;
 }
-
-const defaultProfile: UserProfile = {
-  displayName: "",
-  language: "hinglish",
-  companionStyle: "caring",
-  vibe: "romantic",
-  gender: "male",
-  sexualPreference: "straight",
-  companionPersonality: "cute_soft",
-  appearance: { hair: "long", skinTone: "medium", style: "modern" },
-  moodNotes: "",
-  favoriteTopics: [],
-  lastChatSummary: "",
-  ageVerified: false,
-  onboarded: false,
-  createdAt: Date.now(),
-  updatedAt: Date.now(),
-};
 
 const UserContext = createContext<UserContextType | null>(null);
 
@@ -154,5 +128,3 @@ export const useUser = () => {
   if (!ctx) throw new Error("useUser must be used within UserProvider");
   return ctx;
 };
-
-export { defaultProfile };
