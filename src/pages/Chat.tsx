@@ -2,12 +2,11 @@ import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useUser, type ChatMessage } from "@/contexts/UserContext";
-import { getCompanion } from "@/lib/companions";
 import { simulateMockStream } from "@/lib/mockAI";
 import ChatBubble from "@/components/ChatBubble";
 import TypingIndicator from "@/components/TypingIndicator";
 import { Button } from "@/components/ui/button";
-import { Send, Settings, RotateCcw, Plus, Heart } from "lucide-react";
+import { Send, Settings, Plus, Heart } from "lucide-react";
 
 export default function Chat() {
   const navigate = useNavigate();
@@ -15,7 +14,6 @@ export default function Chat() {
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (!profile?.onboarded) {
@@ -28,10 +26,10 @@ export default function Chat() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, isTyping]);
 
-  const companion = profile ? getCompanion(profile.companionStyle) : null;
+  const companion = profile?.companion;
 
   const sendMessage = async () => {
-    if (!input.trim() || isTyping || !profile) return;
+    if (!input.trim() || isTyping || !profile || !companion) return;
 
     const userMsg: ChatMessage = {
       id: crypto.randomUUID(),
@@ -43,23 +41,21 @@ export default function Chat() {
     setInput("");
     setIsTyping(true);
 
-    // Create placeholder assistant message
-    const assistantId = crypto.randomUUID();
-    let accumulated = "";
-
     const assistantMsg: ChatMessage = {
-      id: assistantId,
+      id: crypto.randomUUID(),
       role: "assistant",
       content: "",
       createdAt: Date.now(),
     };
     addMessage(assistantMsg);
 
+    let accumulated = "";
     await simulateMockStream(
       {
-        personality: profile.companionPersonality,
+        personalities: companion.personalities,
         vibe: profile.vibe,
         userName: profile.displayName,
+        companionName: companion.name,
       },
       (delta) => {
         accumulated += delta;
@@ -76,10 +72,6 @@ export default function Chat() {
     }
   };
 
-  const handleNewChat = () => {
-    clearMessages();
-  };
-
   if (!profile || !companion) return null;
 
   return (
@@ -88,10 +80,10 @@ export default function Chat() {
       <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-card/80 backdrop-blur-sm">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full gradient-primary flex items-center justify-center text-lg">
-            {companion.emoji}
+            💗
           </div>
           <div>
-            <h1 className="font-semibold text-sm text-foreground">{companion.name} Companion</h1>
+            <h1 className="font-semibold text-sm text-foreground">{companion.name}</h1>
             <p className="text-xs text-muted-foreground flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
               Online
@@ -99,7 +91,7 @@ export default function Chat() {
           </div>
         </div>
         <div className="flex gap-1">
-          <Button variant="ghost" size="icon" onClick={handleNewChat} className="text-muted-foreground hover:text-foreground">
+          <Button variant="ghost" size="icon" onClick={() => clearMessages()} className="text-muted-foreground hover:text-foreground">
             <Plus className="w-5 h-5" />
           </Button>
           <Button variant="ghost" size="icon" onClick={() => navigate("/settings")} className="text-muted-foreground hover:text-foreground">
@@ -124,7 +116,7 @@ export default function Chat() {
                 Hey {profile.displayName}! 👋
               </p>
               <p className="text-sm text-muted-foreground mt-1">
-                Start a conversation with your {companion.name.toLowerCase()} companion
+                Start a conversation with {companion.name}
               </p>
             </div>
           </motion.div>
@@ -141,11 +133,10 @@ export default function Chat() {
       <div className="px-4 py-3 border-t border-border bg-card/80 backdrop-blur-sm">
         <div className="flex items-end gap-2 max-w-lg mx-auto">
           <textarea
-            ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Type a message..."
+            placeholder={`Message ${companion.name}...`}
             rows={1}
             className="flex-1 resize-none bg-secondary rounded-2xl px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary max-h-32"
             style={{ minHeight: "44px" }}
