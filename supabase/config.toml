@@ -1,1 +1,7 @@
 project_id = "yrvyjhbgkvgtyictshee"
+
+[functions.chat]
+verify_jwt = true
+
+[functions.summarize-memory]
+verify_jwt = false
