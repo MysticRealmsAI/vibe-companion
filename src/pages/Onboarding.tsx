@@ -1,478 +1,299 @@
-import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useUser } from "@/contexts/UserContext";
-import {
-  suggestedNames,
-  genderOptions,
-  personalityOptions,
-  skinToneOptions,
-  hairStyleOptions,
-  bodyTypeOptions,
-  heightOptions,
-  fashionStyleOptions,
-  imageStyleOptions,
-  languageOptions,
-  vibeOptions,
-} from "@/lib/companions";
-import type {
-  GenderOption,
-  PersonalityTrait,
-  SkinTone,
-  HairStyle,
-  BodyType,
-  Height,
-  FashionStyle,
-  ImageStyle,
-  LanguagePreference,
-  VibePreference,
-  CompanionProfile,
-} from "@/lib/companions";
+import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowRight, ArrowLeft, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, Sparkles, Loader2 } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
-const steps = ["userName", "companionName", "age", "gender", "personality", "appearance", "imageStyle", "extras", "language", "vibe"] as const;
+const personalityOptions = [
+  { id: "caring_loving", label: "Caring & Loving 💗" },
+  { id: "playful_teasing", label: "Playful & Teasing 😜" },
+  { id: "bold_flirty", label: "Bold & Flirty 😏" },
+  { id: "shy_cute", label: "Shy & Cute 🥺" },
+  { id: "seductive", label: "Seductive ✨" },
+  { id: "dominant", label: "Dominant 🔥" },
+  { id: "emotional_deep", label: "Emotional & Deep 🌙" },
+];
+
+const genderOptions = ["female", "male", "non-binary"];
+const speciesOptions = ["human", "elf", "vampire", "demon", "android", "fae", "other"];
+const relationshipOptions = ["stranger", "friend", "best friend", "lover", "rival", "mentor", "roommate"];
+
+const steps = [
+  "your_name", "companion_name", "basics", "personality", "appearance",
+  "backstory", "scenario", "first_message",
+] as const;
 
 export default function Onboarding() {
   const navigate = useNavigate();
-  const { updateProfile } = useUser();
+  const { user, profile, refreshProfile, loading } = useAuth();
   const [step, setStep] = useState(0);
+  const [busy, setBusy] = useState(false);
 
-  // User's own name
-  const [userName, setUserName] = useState("");
-
-  // Companion fields
-  const [companionName, setCompanionName] = useState("");
-  const [age, setAge] = useState(22);
-  const [gender, setGender] = useState<GenderOption>("female");
-  const [personalities, setPersonalities] = useState<PersonalityTrait[]>(["caring_loving"]);
-  const [skinTone, setSkinTone] = useState<SkinTone>("wheatish");
-  const [hairStyle, setHairStyle] = useState<HairStyle>("long_black_wavy");
-  const [bodyType, setBodyType] = useState<BodyType>("slim");
-  const [height, setHeight] = useState<Height>("average");
-  const [fashionStyle, setFashionStyle] = useState<FashionStyle>("modern");
-  const [extraFeatures, setExtraFeatures] = useState("");
-  const [imageStyle, setImageStyle] = useState<ImageStyle>("realistic");
+  const [yourName, setYourName] = useState(profile?.display_name || "");
+  const [name, setName] = useState("");
+  const [age, setAge] = useState(24);
+  const [gender, setGender] = useState("female");
+  const [species, setSpecies] = useState("human");
+  const [relationship, setRelationship] = useState("friend");
+  const [setting, setSetting] = useState("modern day, India");
+  const [personalityTags, setPersonalityTags] = useState<string[]>(["caring_loving"]);
+  const [speechStyle, setSpeechStyle] = useState("natural Hinglish, casual, warm");
+  const [appearance, setAppearance] = useState("long dark wavy hair, warm brown eyes, wheatish skin, slim athletic build");
+  const [clothing, setClothing] = useState("casual modern Indian fashion — jeans and a kurta");
   const [backstory, setBackstory] = useState("");
-  const [language, setLanguage] = useState<LanguagePreference>("hinglish");
-  const [vibe, setVibe] = useState<VibePreference>("romantic");
+  const [scenario, setScenario] = useState("");
+  const [firstMessage, setFirstMessage] = useState("");
+
+  useEffect(() => {
+    if (!loading && !user) navigate("/auth", { replace: true });
+    if (!loading && user && !profile?.age_verified) navigate("/age-gate", { replace: true });
+  }, [user, profile, loading, navigate]);
+
+  useEffect(() => {
+    if (profile?.display_name && !yourName) setYourName(profile.display_name);
+  }, [profile]);
+
+  const togglePersonality = (id: string) => {
+    setPersonalityTags((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+  };
 
   const canNext = () => {
-    if (step === 0) return userName.trim().length > 0;
-    if (step === 1) return companionName.trim().length > 0;
-    if (step === 4) return personalities.length > 0;
+    if (step === 0) return yourName.trim().length > 0;
+    if (step === 1) return name.trim().length > 0;
+    if (step === 3) return personalityTags.length > 0;
     return true;
   };
 
-  const togglePersonality = (id: PersonalityTrait) => {
-    setPersonalities((prev) =>
-      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]
-    );
-  };
+  const finish = async () => {
+    if (!user) return;
+    setBusy(true);
+    try {
+      // update display name
+      if (yourName.trim() !== profile?.display_name) {
+        await supabase.from("profiles").update({ display_name: yourName.trim() }).eq("user_id", user.id);
+        await refreshProfile();
+      }
 
-  const handleFinish = () => {
-    const companion: CompanionProfile = {
-      name: companionName.trim(),
-      age,
-      gender,
-      personalities,
-      appearance: { skinTone, hairStyle, bodyType, height, fashionStyle, extraFeatures: extraFeatures.trim() || undefined },
-      imageStyle,
-      backstory: backstory.trim(),
-    };
+      const { data: comp, error: ce } = await supabase.from("companions").insert({
+        user_id: user.id,
+        full_name: name.trim(),
+        age,
+        gender_identity: gender,
+        species,
+        relationship_type: relationship,
+        setting,
+        personality: personalityTags.join(", "),
+        speech_style: speechStyle,
+        appearance_json: { description: appearance },
+        clothing_json: { description: clothing },
+        backstory: backstory.trim() || null,
+        starter_scenario: scenario.trim() || null,
+        first_message: firstMessage.trim() || null,
+      }).select().single();
+      if (ce) throw ce;
 
-    updateProfile({
-      displayName: userName.trim(),
-      language,
-      vibe,
-      companion,
-      moodNotes: "",
-      favoriteTopics: [],
-      lastChatSummary: "",
-      ageVerified: true,
-      onboarded: true,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    });
+      const { data: chat, error: che } = await supabase.from("chats").insert({
+        user_id: user.id, companion_id: comp.id, title: `Chat with ${comp.full_name}`,
+      }).select().single();
+      if (che) throw che;
 
-    navigate("/chat");
-  };
+      // seed first message if provided
+      if (firstMessage.trim()) {
+        await supabase.from("messages").insert({
+          chat_id: chat.id, user_id: user.id, role: "assistant", content: firstMessage.trim(),
+        });
+      }
 
-  const handleNext = () => {
-    if (step < steps.length - 1) {
-      setStep(step + 1);
-    } else {
-      handleFinish();
+      navigate(`/chat/${chat.id}`, { replace: true });
+    } catch (e: any) {
+      toast.error(e.message || "Failed to create companion");
+    } finally {
+      setBusy(false);
     }
   };
 
-  const OptionButton = ({
-    selected,
-    onClick,
-    label,
-    desc,
-  }: {
-    selected: boolean;
-    onClick: () => void;
-    label: string;
-    desc?: string;
-  }) => (
-    <button
-      onClick={onClick}
-      className={`w-full text-left p-4 rounded-xl border transition-all ${
-        selected
-          ? "border-primary bg-primary/10 glow-primary"
-          : "border-border bg-card hover:border-muted-foreground/30"
-      }`}
-    >
-      <div className="font-semibold text-foreground">{label}</div>
-      {desc && <div className="text-sm text-muted-foreground">{desc}</div>}
-    </button>
-  );
+  const next = () => {
+    if (step < steps.length - 1) setStep(step + 1);
+    else finish();
+  };
 
-  const SmallOptionButton = ({
-    selected,
-    onClick,
-    label,
-  }: {
-    selected: boolean;
-    onClick: () => void;
-    label: string;
-  }) => (
-    <button
-      onClick={onClick}
-      className={`px-4 py-2.5 rounded-xl border text-sm font-medium transition-all ${
-        selected
-          ? "border-primary bg-primary/10 text-foreground glow-primary"
-          : "border-border bg-card text-muted-foreground hover:border-muted-foreground/30"
+  const Pill = ({ active, onClick, children }: any) => (
+    <button onClick={onClick}
+      className={`px-3.5 py-2 rounded-xl border text-sm transition-all ${
+        active ? "border-primary bg-primary/10 text-foreground glow-primary"
+               : "border-border bg-card text-muted-foreground hover:border-muted-foreground/30"
       }`}
-    >
-      {label}
-    </button>
+    >{children}</button>
   );
-
-  const nameSuggestions = suggestedNames[gender] || suggestedNames.female;
 
   return (
-    <div className="min-h-[100dvh] gradient-bg flex flex-col items-center justify-center px-6">
-      <div className="max-w-sm w-full">
-        {/* Progress */}
-        <div className="flex gap-1.5 mb-8">
+    <div className="min-h-[100dvh] gradient-bg flex flex-col items-center justify-center px-5 py-6">
+      <div className="w-full max-w-sm">
+        <div className="flex gap-1.5 mb-6">
           {steps.map((_, i) => (
-            <div
-              key={i}
-              className={`h-1 flex-1 rounded-full transition-colors ${
-                i <= step ? "gradient-primary" : "bg-border"
-              }`}
-            />
+            <div key={i} className={`h-1 flex-1 rounded-full transition-colors ${i <= step ? "gradient-primary" : "bg-border"}`} />
           ))}
         </div>
 
         <AnimatePresence mode="wait">
-          <motion.div
-            key={step}
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.3 }}
-            className="space-y-6"
+          <motion.div key={step}
+            initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.25 }} className="space-y-5"
           >
-            {/* Step 0: User's name */}
             {step === 0 && (
               <>
-                <div className="space-y-2">
-                  <h2 className="text-2xl font-bold font-display">What's your name?</h2>
-                  <p className="text-muted-foreground text-sm">Your companion will use this to talk to you.</p>
-                </div>
-                <Input
-                  value={userName}
-                  onChange={(e) => setUserName(e.target.value)}
-                  placeholder="Enter your name..."
-                  className="py-5 text-base bg-card border-border rounded-xl focus:ring-primary"
-                  maxLength={30}
-                  autoFocus
-                />
+                <h2 className="text-2xl font-bold font-display">What's your name?</h2>
+                <p className="text-sm text-muted-foreground">Your companion will use this when talking to you.</p>
+                <Input value={yourName} onChange={(e) => setYourName(e.target.value)}
+                  placeholder="Enter your name..." maxLength={30} autoFocus
+                  className="py-5 bg-card border-border rounded-xl" />
               </>
             )}
 
-            {/* Step 1: Companion name */}
             {step === 1 && (
               <>
-                <div className="space-y-2">
-                  <h2 className="text-2xl font-bold font-display flex items-center gap-2">
-                    <Sparkles className="w-6 h-6 text-primary" />
-                    Name your companion
-                  </h2>
-                  <p className="text-muted-foreground text-sm">Give your AI companion an Indian name.</p>
-                </div>
-                <Input
-                  value={companionName}
-                  onChange={(e) => setCompanionName(e.target.value)}
-                  placeholder="e.g. Priya, Aarav, Riya..."
-                  className="py-5 text-base bg-card border-border rounded-xl focus:ring-primary"
-                  maxLength={30}
-                  autoFocus
-                />
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Suggestions</label>
-                  <div className="flex flex-wrap gap-2">
-                    {nameSuggestions.map((n) => (
-                      <button
-                        key={n}
-                        onClick={() => setCompanionName(n)}
-                        className={`px-3 py-1.5 rounded-lg text-sm border transition-all ${
-                          companionName === n
-                            ? "border-primary bg-primary/10 text-foreground"
-                            : "border-border bg-card text-muted-foreground hover:border-muted-foreground/30"
-                        }`}
-                      >
-                        {n}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                <h2 className="text-2xl font-bold font-display flex items-center gap-2">
+                  <Sparkles className="w-6 h-6 text-primary" /> Name your companion
+                </h2>
+                <Input value={name} onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g. Priya, Aarav, Zara..." maxLength={40} autoFocus
+                  className="py-5 bg-card border-border rounded-xl" />
               </>
             )}
 
-            {/* Step 2: Age */}
             {step === 2 && (
               <>
-                <div className="space-y-2">
-                  <h2 className="text-2xl font-bold font-display">How old is {companionName}?</h2>
-                  <p className="text-muted-foreground text-sm">Choose an age between 18 and 30.</p>
-                </div>
-                <div className="flex items-center gap-4">
-                  <input
-                    type="range"
-                    min={18}
-                    max={30}
-                    value={age}
-                    onChange={(e) => setAge(Number(e.target.value))}
-                    className="flex-1 accent-primary"
-                  />
-                  <span className="text-2xl font-bold text-foreground w-10 text-center">{age}</span>
-                </div>
-                <div className="flex justify-between text-xs text-muted-foreground px-1">
-                  <span>18</span>
-                  <span>30</span>
+                <h2 className="text-2xl font-bold font-display">About {name}</h2>
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Age</label>
+                    <div className="flex items-center gap-3 mt-2">
+                      <input type="range" min={18} max={60} value={age}
+                        onChange={(e) => setAge(Number(e.target.value))} className="flex-1 accent-primary" />
+                      <span className="text-xl font-bold w-10 text-center">{age}</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Gender</label>
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {genderOptions.map((g) => <Pill key={g} active={gender === g} onClick={() => setGender(g)}>{g}</Pill>)}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Species</label>
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {speciesOptions.map((s) => <Pill key={s} active={species === s} onClick={() => setSpecies(s)}>{s}</Pill>)}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Relationship</label>
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {relationshipOptions.map((r) => <Pill key={r} active={relationship === r} onClick={() => setRelationship(r)}>{r}</Pill>)}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Setting</label>
+                    <Input value={setting} onChange={(e) => setSetting(e.target.value)}
+                      className="bg-card border-border rounded-xl mt-2" placeholder="modern day, fantasy kingdom..." />
+                  </div>
                 </div>
               </>
             )}
 
-            {/* Step 3: Gender */}
             {step === 3 && (
               <>
-                <div className="space-y-2">
-                  <h2 className="text-2xl font-bold font-display">{companionName}'s gender</h2>
-                  <p className="text-muted-foreground text-sm">How does your companion identify?</p>
-                </div>
-                <div className="space-y-3">
-                  {genderOptions.map((opt) => (
-                    <OptionButton
-                      key={opt.id}
-                      selected={gender === opt.id}
-                      onClick={() => setGender(opt.id)}
-                      label={opt.label}
-                    />
+                <h2 className="text-2xl font-bold font-display">Personality</h2>
+                <p className="text-sm text-muted-foreground">Pick one or more.</p>
+                <div className="space-y-2 max-h-[50vh] overflow-y-auto">
+                  {personalityOptions.map((p) => (
+                    <button key={p.id} onClick={() => togglePersonality(p.id)}
+                      className={`w-full text-left p-3.5 rounded-xl border transition-all ${
+                        personalityTags.includes(p.id)
+                          ? "border-primary bg-primary/10 glow-primary"
+                          : "border-border bg-card hover:border-muted-foreground/30"
+                      }`}
+                    >
+                      <div className="font-semibold">{p.label}</div>
+                    </button>
                   ))}
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Speech style</label>
+                  <Input value={speechStyle} onChange={(e) => setSpeechStyle(e.target.value)}
+                    className="bg-card border-border rounded-xl mt-2"
+                    placeholder="natural Hinglish, casual..." />
                 </div>
               </>
             )}
 
-            {/* Step 4: Personality (multi-select) */}
             {step === 4 && (
               <>
-                <div className="space-y-2">
-                  <h2 className="text-2xl font-bold font-display">{companionName}'s personality</h2>
-                  <p className="text-muted-foreground text-sm">Pick one or more traits. This shapes how they talk and behave.</p>
+                <h2 className="text-2xl font-bold font-display">Appearance & Style</h2>
+                <div>
+                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Appearance</label>
+                  <textarea value={appearance} onChange={(e) => setAppearance(e.target.value)}
+                    rows={4} maxLength={500}
+                    className="w-full mt-2 resize-none bg-card rounded-xl px-4 py-3 text-sm border border-border focus:outline-none focus:ring-1 focus:ring-primary" />
                 </div>
-                <div className="space-y-3 max-h-[45vh] overflow-y-auto">
-                  {personalityOptions.map((opt) => (
-                    <OptionButton
-                      key={opt.id}
-                      selected={personalities.includes(opt.id)}
-                      onClick={() => togglePersonality(opt.id)}
-                      label={opt.label}
-                      desc={opt.desc}
-                    />
-                  ))}
+                <div>
+                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Clothing</label>
+                  <textarea value={clothing} onChange={(e) => setClothing(e.target.value)}
+                    rows={3} maxLength={300}
+                    className="w-full mt-2 resize-none bg-card rounded-xl px-4 py-3 text-sm border border-border focus:outline-none focus:ring-1 focus:ring-primary" />
                 </div>
               </>
             )}
 
-            {/* Step 5: Appearance */}
             {step === 5 && (
               <>
-                <div className="space-y-2">
-                  <h2 className="text-2xl font-bold font-display">{companionName}'s look</h2>
-                  <p className="text-muted-foreground text-sm">Customize your companion's appearance.</p>
-                </div>
-                <div className="space-y-5 max-h-[50vh] overflow-y-auto pr-1">
-                  <div className="space-y-2">
-                    <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Skin Tone</label>
-                    <div className="flex flex-wrap gap-2">
-                      {skinToneOptions.map((opt) => (
-                        <SmallOptionButton key={opt.id} selected={skinTone === opt.id} onClick={() => setSkinTone(opt.id)} label={opt.label} />
-                      ))}
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Hair</label>
-                    <div className="flex flex-wrap gap-2">
-                      {hairStyleOptions.map((opt) => (
-                        <SmallOptionButton key={opt.id} selected={hairStyle === opt.id} onClick={() => setHairStyle(opt.id)} label={opt.label} />
-                      ))}
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Body Type</label>
-                    <div className="flex flex-wrap gap-2">
-                      {bodyTypeOptions.map((opt) => (
-                        <SmallOptionButton key={opt.id} selected={bodyType === opt.id} onClick={() => setBodyType(opt.id)} label={opt.label} />
-                      ))}
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Height</label>
-                    <div className="flex flex-wrap gap-2">
-                      {heightOptions.map((opt) => (
-                        <SmallOptionButton key={opt.id} selected={height === opt.id} onClick={() => setHeight(opt.id)} label={opt.label} />
-                      ))}
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Fashion Style</label>
-                    <div className="flex flex-wrap gap-2">
-                      {fashionStyleOptions.map((opt) => (
-                        <SmallOptionButton key={opt.id} selected={fashionStyle === opt.id} onClick={() => setFashionStyle(opt.id)} label={opt.label} />
-                      ))}
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Extra Details (optional)</label>
-                    <Input
-                      value={extraFeatures}
-                      onChange={(e) => setExtraFeatures(e.target.value)}
-                      placeholder="e.g. dimples, glasses, nose ring..."
-                      className="bg-card border-border rounded-xl"
-                      maxLength={100}
-                    />
-                  </div>
-                </div>
+                <h2 className="text-2xl font-bold font-display">Backstory <span className="text-sm text-muted-foreground font-normal">(optional)</span></h2>
+                <textarea value={backstory} onChange={(e) => setBackstory(e.target.value)}
+                  placeholder={`${name}'s history, hobbies, where they come from, secrets...`}
+                  rows={6} maxLength={800}
+                  className="w-full resize-none bg-card rounded-xl px-4 py-3 text-sm border border-border focus:outline-none focus:ring-1 focus:ring-primary" />
               </>
             )}
 
-            {/* Step 6: Image Style */}
             {step === 6 && (
               <>
-                <div className="space-y-2">
-                  <h2 className="text-2xl font-bold font-display">How should {companionName} look?</h2>
-                  <p className="text-muted-foreground text-sm">Choose the image generation style for your companion.</p>
-                </div>
-                <div className="space-y-3">
-                  {imageStyleOptions.map((opt) => (
-                    <OptionButton
-                      key={opt.id}
-                      selected={imageStyle === opt.id}
-                      onClick={() => setImageStyle(opt.id)}
-                      label={opt.label}
-                      desc={opt.desc}
-                    />
-                  ))}
-                </div>
+                <h2 className="text-2xl font-bold font-display">Opening Scenario <span className="text-sm text-muted-foreground font-normal">(optional)</span></h2>
+                <p className="text-sm text-muted-foreground">Set the scene for your first conversation.</p>
+                <textarea value={scenario} onChange={(e) => setScenario(e.target.value)}
+                  placeholder={`e.g. "${name} just moved in next door and you ran into them at the elevator..."`}
+                  rows={5} maxLength={500}
+                  className="w-full resize-none bg-card rounded-xl px-4 py-3 text-sm border border-border focus:outline-none focus:ring-1 focus:ring-primary" />
               </>
             )}
 
-            {/* Step 7: Extras */}
             {step === 7 && (
               <>
-                <div className="space-y-2">
-                  <h2 className="text-2xl font-bold font-display">Anything else about {companionName}?</h2>
-                  <p className="text-muted-foreground text-sm">Add hobbies, backstory, relationship style, or anything you'd like.</p>
-                </div>
-                <textarea
-                  value={backstory}
-                  onChange={(e) => setBackstory(e.target.value)}
-                  placeholder={`e.g. "${companionName} loves Bollywood music, is a college student in Mumbai, and treats you like her best friend turned lover..."`}
-                  rows={4}
-                  className="w-full resize-none bg-card rounded-xl px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground border border-border focus:outline-none focus:ring-1 focus:ring-primary"
-                  maxLength={500}
-                />
-                <p className="text-xs text-muted-foreground text-right">{backstory.length}/500</p>
-              </>
-            )}
-
-            {/* Step 8: Language */}
-            {step === 8 && (
-              <>
-                <div className="space-y-2">
-                  <h2 className="text-2xl font-bold font-display">Chat language</h2>
-                  <p className="text-muted-foreground text-sm">How should {companionName} talk to you?</p>
-                </div>
-                <div className="space-y-3">
-                  {languageOptions.map((opt) => (
-                    <OptionButton
-                      key={opt.id}
-                      selected={language === opt.id}
-                      onClick={() => setLanguage(opt.id)}
-                      label={opt.label}
-                      desc={opt.desc}
-                    />
-                  ))}
-                </div>
-              </>
-            )}
-
-            {/* Step 9: Vibe */}
-            {step === 9 && (
-              <>
-                <div className="space-y-2">
-                  <h2 className="text-2xl font-bold font-display">Set the vibe</h2>
-                  <p className="text-muted-foreground text-sm">What kind of conversations do you want with {companionName}?</p>
-                </div>
-                <div className="space-y-3">
-                  {vibeOptions.map((opt) => (
-                    <OptionButton
-                      key={opt.id}
-                      selected={vibe === opt.id}
-                      onClick={() => setVibe(opt.id)}
-                      label={opt.label}
-                      desc={opt.desc}
-                    />
-                  ))}
-                </div>
+                <h2 className="text-2xl font-bold font-display">First Message <span className="text-sm text-muted-foreground font-normal">(optional)</span></h2>
+                <p className="text-sm text-muted-foreground">What does {name} say to you first?</p>
+                <textarea value={firstMessage} onChange={(e) => setFirstMessage(e.target.value)}
+                  placeholder={`e.g. "Hey ${yourName}! Finally tum aaye, main wait kar rahi thi 💕"`}
+                  rows={4} maxLength={500}
+                  className="w-full resize-none bg-card rounded-xl px-4 py-3 text-sm border border-border focus:outline-none focus:ring-1 focus:ring-primary" />
               </>
             )}
           </motion.div>
         </AnimatePresence>
 
-        <div className="flex gap-3 mt-8">
+        <div className="flex gap-3 mt-6">
           {step > 0 && (
-            <Button
-              variant="outline"
-              onClick={() => setStep(step - 1)}
-              className="py-5 rounded-xl border-border"
-            >
+            <Button variant="outline" onClick={() => setStep(step - 1)}
+              className="py-5 rounded-xl border-border" disabled={busy}>
               <ArrowLeft className="w-4 h-4" />
             </Button>
           )}
-          <Button
-            onClick={handleNext}
-            disabled={!canNext()}
-            className="flex-1 py-5 text-base font-semibold gradient-primary text-primary-foreground rounded-xl glow-primary hover:opacity-90 transition-opacity disabled:opacity-40"
-          >
-            {step === steps.length - 1 ? (
-              <>
-                <Sparkles className="w-4 h-4 mr-2" />
-                Create {companionName || "Companion"}
-              </>
-            ) : (
-              <>
-                Continue
-                <ArrowRight className="w-4 h-4 ml-2" />
-              </>
-            )}
+          <Button onClick={next} disabled={!canNext() || busy}
+            className="flex-1 py-5 font-semibold gradient-primary text-primary-foreground rounded-xl glow-primary disabled:opacity-40">
+            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> :
+             step === steps.length - 1 ? <><Sparkles className="w-4 h-4 mr-2" />Create {name || "companion"}</>
+             : <>Continue <ArrowRight className="w-4 h-4 ml-2" /></>}
           </Button>
         </div>
       </div>
